@@ -12,6 +12,7 @@ const PDFDocument = require("pdfkit");
 const { query, initAdmin } = require("./db");
 const { signToken, auth, requireRole } = require("./auth");
 const { verifyLocation } = require("./geofence");
+const { createOtp, verifyOtpAndReset } = require("./recovery");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -56,6 +57,40 @@ function setSession(res, token) {
 }
 function clearSession(res) { res.clearCookie("access_token", { path: "/" }); }
 
+// OTP password recovery
+const forgotLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, message: { error: "Too many password reset requests. Try again later." } });
+const otpRequestSchema = z.object({ email: z.string().email().max(190) });
+const otpVerifySchema = z.object({
+  email: z.string().email().max(190),
+  otp: z.string().regex(/^\d{6}$/, "OTP must be 6 digits"),
+  new_password: z.string().min(6).max(200),
+  confirm_password: z.string().min(6).max(200)
+});
+
+async function requestPasswordOtp(req, res, next, role) {
+  try {
+    const d = otpRequestSchema.parse(req.body);
+    const rows = await query("SELECT id FROM users WHERE email=? AND role=? AND active=1 LIMIT 1", [d.email, role]);
+    if (rows.length) await createOtp(d.email, role);
+    res.json({ ok:true, message:"If the account exists, a 6-digit OTP has been sent to the registered email address." });
+  } catch(e) { next(e); }
+}
+
+app.post("/api/auth/employee-forgot", forgotLimiter, async (req,res,next) => requestPasswordOtp(req,res,next,"EMPLOYEE"));
+app.post("/api/auth/admin-forgot", forgotLimiter, async (req,res,next) => requestPasswordOtp(req,res,next,"ADMIN"));
+
+async function resetWithOtp(req,res,next,role) {
+  try {
+    const d=otpVerifySchema.parse(req.body);
+    if(d.new_password !== d.confirm_password) return res.status(400).json({error:"New passwords do not match"});
+    await verifyOtpAndReset({email:d.email,role,otp:d.otp,newPassword:d.new_password});
+    res.json({ok:true,message:"Password reset successfully. You can now log in with your new password."});
+  } catch(e) { next(e); }
+}
+
+app.post("/api/auth/employee-reset-otp", forgotLimiter, async (req,res,next) => resetWithOtp(req,res,next,"EMPLOYEE"));
+app.post("/api/auth/admin-reset-otp", forgotLimiter, async (req,res,next) => resetWithOtp(req,res,next,"ADMIN"));
+
 const loginSchema = z.object({
   email: z.string().email().max(190),
   password: z.string().min(1).max(200)
@@ -76,29 +111,18 @@ app.post("/api/auth/login", loginLimiter, async (req,res,next) => {
     const token = signToken(u);
     setSession(res, token);
     await audit(req, "LOGIN", "USER", u.id);
-    res.json({ user: { id:u.id, name:u.name, email:u.email, role:u.role, employee_id:u.employee_id, employee_code:u.employee_code, must_change_password:Boolean(u.must_change_password) } });
+    res.json({ 
+      user: { 
+        id:u.id, 
+        name:u.name, 
+        email:u.email, 
+        role:u.role, 
+        employee_id:u.employee_id, 
+        employee_code:u.employee_code,
+        must_change_password: Boolean(u.must_change_password) 
+      } 
+    });
   } catch(e) { next(e); }
-});
-const changePasswordSchema = z.object({
-  current_password:z.string().min(1).max(200),
-  new_password:z.string().min(6).max(200),
-  confirm_password:z.string().min(6).max(200)
-});
-
-app.post("/api/auth/change-password", auth, async (req,res,next) => {
-  try {
-    const d=changePasswordSchema.parse(req.body);
-    if(d.new_password !== d.confirm_password) return res.status(400).json({error:"New passwords do not match"});
-    if(d.current_password === d.new_password) return res.status(400).json({error:"New password must be different from current password"});
-    const rows=await query("SELECT id,password_hash FROM users WHERE id=? AND active=1 LIMIT 1",[req.user.sub]);
-    if(!rows.length || !(await bcrypt.compare(d.current_password,rows[0].password_hash))) {
-      return res.status(401).json({error:"Current password is incorrect"});
-    }
-    const hash=await bcrypt.hash(d.new_password,12);
-    await query("UPDATE users SET password_hash=?,must_change_password=0 WHERE id=?",[hash,req.user.sub]);
-    await audit(req,"PASSWORD_CHANGE","USER",req.user.sub);
-    res.json({ok:true});
-  } catch(e){next(e);}
 });
 
 app.post("/api/auth/logout", auth, async (req,res) => {
@@ -106,6 +130,7 @@ app.post("/api/auth/logout", auth, async (req,res) => {
   clearSession(res);
   res.json({ ok:true });
 });
+
 app.get("/api/auth/me", auth, async (req,res,next) => {
   try {
     const rows = await query(
@@ -113,8 +138,33 @@ app.get("/api/auth/me", auth, async (req,res,next) => {
        FROM users u LEFT JOIN employees e ON e.id=u.employee_id WHERE u.id=?`, [req.user.sub]
     );
     if (!rows.length) return res.status(401).json({error:"User not found"});
-    res.json({user:rows[0]});
+    const user = rows[0];
+    user.must_change_password = Boolean(user.must_change_password);
+    res.json({user});
   } catch(e){next(e);}
+});
+
+// Change Temporary Password Endpoint
+app.post("/api/change-password", auth, async (req, res, next) => {
+  try {
+    const schema = z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(6).max(200)
+    });
+    const { currentPassword, newPassword } = schema.parse(req.body);
+
+    const rows = await query("SELECT password_hash FROM users WHERE id = ?", [req.user.sub]);
+    if (!rows.length) return res.status(404).json({ error: "User not found" });
+
+    const match = await bcrypt.compare(currentPassword, rows[0].password_hash);
+    if (!match) return res.status(400).json({ error: "Current password is incorrect" });
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await query("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?", [newHash, req.user.sub]);
+
+    await audit(req, "PASSWORD_CHANGE", "USER", req.user.sub);
+    res.json({ ok: true, message: "Password updated successfully" });
+  } catch (e) { next(e); }
 });
 
 app.get("/api/employee/dashboard", auth, requireRole("EMPLOYEE"), async (req,res,next)=>{
@@ -178,6 +228,17 @@ app.get("/api/attendance/history", auth, requireRole("EMPLOYEE"), async (req,res
   } catch(e){next(e);}
 });
 
+// Employee Leave Routes
+app.get("/api/leaves", auth, requireRole("EMPLOYEE"), async (req, res, next) => {
+  try {
+    const rows = await query(
+      "SELECT start_date, end_date, leave_type, reason, status, created_at FROM leave_requests WHERE employee_id = ? ORDER BY created_at DESC",
+      [req.user.employee_id]
+    );
+    res.json(rows);
+  } catch(e){ next(e); }
+});
+
 app.post("/api/leaves", auth, requireRole("EMPLOYEE"), async (req,res,next)=>{
   try {
     const s=z.object({start_date:z.string(),end_date:z.string(),leave_type:z.string().min(1).max(50),reason:z.string().max(1000).optional()}).parse(req.body);
@@ -208,29 +269,36 @@ app.get("/api/admin/employees", auth, requireRole("ADMIN"), async (req,res,next)
 const empSchema=z.object({
   employee_code:z.string().min(1).max(50),
   name:z.string().min(1).max(120),
-  email:z.string().email().max(190).optional().nullable(),
+  email:z.string().email().max(190),
   phone:z.string().max(30).optional().nullable(),
   department:z.string().max(100).optional().nullable(),
   designation:z.string().max(100).optional().nullable(),
   joining_date:z.string().optional().nullable(),
+  password:z.string().min(6).max(200).optional(),
   active:z.boolean().optional()
 });
 
 app.post("/api/admin/employees", auth, requireRole("ADMIN"), async (req,res,next)=>{
   try {
     const d=empSchema.parse(req.body);
-    const tempPassword=String(req.body.temp_password||"").trim();
-    if(d.email && tempPassword.length < 6) return res.status(400).json({error:"Temporary password must be at least 6 characters when an email is provided"});
+    const tempPassword = d.password || "123456";
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
     const r=await query("INSERT INTO employees(employee_code,name,email,phone,department,designation,joining_date,active) VALUES(?,?,?,?,?,?,?,?)",
       [d.employee_code,d.name,d.email||null,d.phone||null,d.department||null,d.designation||null,d.joining_date||null,d.active===false?0:1]);
-    if(d.email) {
-      const hash=await bcrypt.hash(tempPassword,12);
-      await query("INSERT INTO users(name,email,password_hash,role,employee_id,active,must_change_password) VALUES(?,?,?,'EMPLOYEE',?,?,1)",[d.name,d.email,hash,r.insertId,d.active===false?0:1]);
-    }
-    await audit(req,"EMPLOYEE_CREATE","EMPLOYEE",r.insertId,{employee_code:d.employee_code,login_created:Boolean(d.email)});
-    res.json({id:r.insertId,login_created:Boolean(d.email)});
+
+    const employeeId = r.insertId;
+
+    await query(
+      `INSERT INTO users(name,email,password_hash,must_change_password,role,employee_id) VALUES(?,?,?,1,'EMPLOYEE',?)`,
+      [d.name, d.email, hashedPassword, employeeId]
+    );
+
+    await audit(req,"EMPLOYEE_CREATE","EMPLOYEE",employeeId,{employee_code:d.employee_code});
+    res.json({id:employeeId});
   }catch(e){next(e);}
 });
+
 app.put("/api/admin/employees/:id", auth, requireRole("ADMIN"), async (req,res,next)=>{
   try {
     const d=empSchema.partial().parse(req.body);
@@ -244,6 +312,7 @@ app.put("/api/admin/employees/:id", auth, requireRole("ADMIN"), async (req,res,n
     res.json({ok:true});
   }catch(e){next(e);}
 });
+
 app.delete("/api/admin/employees/:id", auth, requireRole("ADMIN"), async (req,res,next)=>{
   try {
     await query("UPDATE employees SET active=0 WHERE id=?",[req.params.id]);
@@ -255,6 +324,7 @@ app.delete("/api/admin/employees/:id", auth, requireRole("ADMIN"), async (req,re
 app.get("/api/admin/office", auth, requireRole("ADMIN"), async (req,res,next)=>{
   try { res.json({office:await getOffice()}); }catch(e){next(e);}
 });
+
 app.put("/api/admin/office", auth, requireRole("ADMIN"), async (req,res,next)=>{
   try {
     const d=z.object({name:z.string().min(1).max(120),latitude:z.number().min(-90).max(90),longitude:z.number().min(-180).max(180),radius_meters:z.number().positive().max(5000),max_accuracy_meters:z.number().positive().max(1000)}).parse(req.body);
@@ -283,6 +353,7 @@ app.get("/api/admin/leaves", auth, requireRole("ADMIN"), async (req,res,next)=>{
     res.json({rows:await query(`SELECT l.*,e.employee_code,e.name FROM leave_requests l JOIN employees e ON e.id=l.employee_id ORDER BY l.created_at DESC LIMIT 1000`)});
   }catch(e){next(e);}
 });
+
 app.put("/api/admin/leaves/:id", auth, requireRole("ADMIN"), async(req,res,next)=>{
   try {
     const status=z.enum(["APPROVED","REJECTED"]).parse(req.body.status);
@@ -297,6 +368,7 @@ async function attendanceRows(from,to) {
     FROM attendance a JOIN employees e ON e.id=a.employee_id
     WHERE DATE(a.punched_at) BETWEEN ? AND ? ORDER BY a.punched_at ASC`,[from,to]);
 }
+
 app.get("/api/admin/export/attendance.xlsx", auth, requireRole("ADMIN"), async(req,res,next)=>{
   try {
     const from=req.query.from || new Date().toISOString().slice(0,10), to=req.query.to || from;
@@ -309,6 +381,7 @@ app.get("/api/admin/export/attendance.xlsx", auth, requireRole("ADMIN"), async(r
     await wb.xlsx.write(res); res.end();
   }catch(e){next(e);}
 });
+
 app.get("/api/admin/export/attendance.pdf", auth, requireRole("ADMIN"), async(req,res,next)=>{
   try {
     const from=req.query.from || new Date().toISOString().slice(0,10), to=req.query.to || from;
@@ -328,15 +401,6 @@ app.use(express.static(path.join(__dirname,"../public")));
 app.get("/", (req,res)=>res.sendFile(path.join(__dirname,"../public/index.html")));
 app.get("/admin/", (req,res)=>res.sendFile(path.join(__dirname,"../public/admin/index.html")));
 
-
-async function ensurePasswordFlagColumn() {
-  try {
-    await query("ALTER TABLE users ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0");
-  } catch (e) {
-    if (e.code !== "ER_DUP_FIELDNAME") throw e;
-  }
-}
-
 app.use((err,req,res,next)=>{
   console.error(err);
   if(err instanceof z.ZodError) return res.status(400).json({error:"Invalid input",details:err.issues});
@@ -347,7 +411,6 @@ app.use((err,req,res,next)=>{
 (async()=>{
   try {
     await query("SELECT 1");
-    await ensurePasswordFlagColumn();
     await initAdmin();
     app.listen(PORT,()=>console.log(`Attendance server running on port ${PORT}`));
   } catch(e) {

@@ -1,11 +1,35 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#4f46e5"><title>Attendance Pro • Employee</title><link rel="stylesheet" href="/style.css"></head>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#4f46e5"><title>Attendance Pro • Employee</title><link rel="stylesheet" href="/style.css"></head>
 <body><main class="shell">
-<section id="loginCard" class="card login-card"><div class="brandmark">📍</div><span class="pill">SMART ATTENDANCE</span><h1>Attendance Pro</h1><p>Securely record your attendance from the office.</p><form id="loginForm"><input id="email" type="email" placeholder="Employee email" autocomplete="username" required><input id="password" type="password" placeholder="Password" autocomplete="current-password" required><button>Login</button></form><div id="loginMsg"></div></section>
-<section id="app" class="hidden"><header class="hero"><div class="top"><div><div class="brand">📍 Attendance <span>Pro</span></div><h1>My Attendance 👋</h1><p id="who"></p></div><div class="header-actions"><button id="changePassword" class="secondary">🔐 Password</button><button id="logout" class="secondary">Logout</button></div></div></header>
-<div class="grid"><div class="card accent-blue"><div class="section-title"><h2>📍 Office Check</h2><span class="pill">GPS protected</span></div><div class="location-box"><div class="pulse-dot"></div><div><strong>Office geofence active</strong><p id="officeInfo"></p></div></div><button id="punch" class="primary-action">📍 Get GPS & Punch</button><p id="status" class="status"></p></div>
-<div class="card accent-green"><div class="section-title"><h2>🕘 Recent Punches</h2><span class="pill">Live history</span></div><div class="tablewrap"><table><thead><tr><th>Type</th><th>Time</th><th>Distance</th><th>Accuracy</th></tr></thead><tbody id="rows"></tbody></table></div></div></div>
-<div class="card accent-purple"><div class="section-title"><h2>🌴 Leave Request</h2><span class="pill">Plan your leave</span></div><form id="leaveForm" class="formgrid"><input id="start" type="date" required><input id="end" type="date" required><select id="type"><option>Casual</option><option>Sick</option><option>Earned</option><option>Other</option></select><input id="reason" placeholder="Reason"><button>Submit Leave Request</button></form></div>
+<section id="loginCard" class="card login-card"><div class="brandmark logo-animated">📍</div><span class="pill">SMART ATTENDANCE</span><h1>Attendance Pro</h1><p>Securely record your attendance from the office.</p><form id="loginForm"><input id="email" type="email" placeholder="Employee email" autocomplete="username" required><input id="password" type="password" placeholder="Password" autocomplete="current-password" required><button class="gradient-btn">Login</button></form><button id="forgotPassword" type="button" class="link-button">🔑 Forgot password?</button><div id="loginMsg"></div></section>
+<section id="app" class="hidden"><header class="hero"><div class="top"><div><div class="brand">📍 Attendance <span>Pro</span></div><h1>My Attendance 👋</h1><p id="who"></p></div><div class="header-actions"><button id="changePassword" class="secondary">🔐 Password</button><button id="logout" class="secondary">↪ Logout</button></div></div></header>
+<div class="grid"><div class="card accent-blue animated-card"><div class="section-title"><h2>📍 Office Check</h2><span class="pill">GPS protected</span></div><div class="location-box"><div class="pulse-dot"></div><div><strong>Office geofence active</strong><p id="officeInfo"></p></div></div><button id="punch" class="primary-action">📍 Get GPS & Punch</button><p id="status" class="status"></p></div>
+<div class="card accent-green animated-card"><div class="section-title"><h2>🕘 Recent Punches</h2><span class="pill">Live history</span></div><div class="tablewrap"><table><thead><tr><th>Type</th><th>Time</th><th>Distance</th><th>Accuracy</th></tr></thead><tbody id="rows"></tbody></table></div></div></div>
+<div class="card accent-purple animated-card"><div class="section-title"><h2>🌴 Leave Request</h2><span class="pill">Plan your leave</span></div><form id="leaveForm" class="formgrid"><input id="start" type="date" required><input id="end" type="date" required><select id="type"><option>Casual</option><option>Sick</option><option>Earned</option><option>Other</option></select><input id="reason" placeholder="Reason"><button class="gradient-btn">Submit Leave Request</button></form></div>
+<div class="card accent-orange animated-card">
+  <div class="section-title">
+    <h2>📋 My Leave Requests</h2>
+    <span class="pill">Leave Status</span>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Dates</th>
+          <th>Type</th>
+          <th>Reason</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="myLeaveRows">
+        <tr>
+          <td colspan="4" class="empty">Loading leave requests...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
 </section></main>
-<div id="changePasswordModal" class="modal-backdrop" aria-hidden="true"><div class="password-modal card"><div class="modal-icon">🔐</div><span class="pill">SECURITY</span><h2>Change Temporary Password</h2><p>Your administrator assigned a temporary password. Create a new password to continue.</p><form id="passwordForm"><label>Current Password<input type="password" id="currentPassword" autocomplete="current-password" required></label><label>New Password<input type="password" id="newPassword" autocomplete="new-password" minlength="6" placeholder="At least 6 characters" required></label><label>Confirm New Password<input type="password" id="confirmPassword" autocomplete="new-password" required></label><p id="modalError" class="error"></p><button id="submitPasswordBtn">Update Password</button></form></div></div>
-<script src="/employee/app.js"></script></body></html>
+<div id="changePasswordModal" class="modal-backdrop" aria-hidden="true"><div class="password-modal card"><div class="modal-icon">🔐</div><span class="pill">SECURITY</span><h2>Change Temporary Password</h2><p>Your administrator assigned a temporary password. Create a new password to continue.</p><form id="passwordForm"><label>Current Password<input type="password" id="currentPassword" autocomplete="current-password" required></label><label>New Password<input type="password" id="newPassword" autocomplete="new-password" minlength="6" placeholder="At least 6 characters" required></label><label>Confirm New Password<input type="password" id="confirmPassword" autocomplete="new-password" required></label><p id="modalError" class="error"></p><button id="submitPasswordBtn" class="gradient-btn">Update Password</button></form></div></div>
+<div id="forgotModal" class="modal-backdrop" aria-hidden="true"><div class="password-modal card"><div class="modal-icon">🔑</div><span class="pill">OTP RECOVERY</span><h2>Forgot Password?</h2><p>We will send a 6-digit OTP to your registered employee email.</p><form id="forgotForm"><div id="employeeOtpStep1"><label>Employee Email<input id="forgotEmail" type="email" placeholder="Employee email" required></label><p id="forgotMsg" class="status"></p><button class="gradient-btn">Send OTP</button></div><div id="employeeOtpStep2" class="hidden"><label>OTP<input id="forgotOtp" inputmode="numeric" maxlength="6" placeholder="6-digit OTP" autocomplete="one-time-code" required></label><label>New Password<input id="recoveryNew" type="password" minlength="6" placeholder="At least 6 characters" required></label><label>Confirm New Password<input id="recoveryConfirm" type="password" minlength="6" placeholder="Confirm password" required></label><p id="resetMsg" class="status"></p><button class="gradient-btn">Reset Password</button></div></form><button id="closeForgot" type="button" class="secondary modal-close">Close</button></div></div>
+<script src="/employee/app.js?v=4"></script></body></html>
