@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Attendance Admin</title><link rel="stylesheet" href="/style.css"></head>
+<body><main class="shell"><section id="loginCard" class="card"><h1>Admin Dashboard</h1><form id="loginForm"><input id="email" type="email" placeholder="Admin email" required><input id="password" type="password" placeholder="Password" required><button>Login</button></form><p id="loginMsg"></p></section>
+<section id="app" class="hidden"><header class="top"><div><h1>Admin Dashboard</h1><p id="who"></p></div><button id="logout" class="secondary">Logout</button></header>
+<div class="stats"><div class="stat">Employees <b id="employees">-</b></div><div class="stat">Present today <b id="present">-</b></div><div class="stat">Pending leaves <b id="pending">-</b></div></div>
+<div class="grid"><div class="card"><h2>Office geofence</h2><form id="officeForm" class="formgrid"><input id="oname" placeholder="Office name"><input id="olat" type="number" step="any" placeholder="Latitude"><input id="olng" type="number" step="any" placeholder="Longitude"><input id="oradius" type="number" step="any" placeholder="Radius meters"><input id="oaccuracy" type="number" step="any" placeholder="Max GPS accuracy meters"><button>Save</button></form></div>
+<div class="card">
+  <h2>Add employee</h2>
+  <form id="empForm" class="formgrid">
+    <input id="ecode" placeholder="Employee ID" required>
+    <input id="ename" placeholder="Name" required>
+    <input id="eemail" type="email" placeholder="Email">
+    <input id="edept" placeholder="Department">
+    <input id="edesig" placeholder="Designation">
+    
+    <!-- Temporary Password field added -->
+    <input id="epass" type="password" placeholder="Temporary Password" required>
+    
+    <button>Add</button>
+  </form>
+</div><div class="card"><h2>Attendance report</h2><div class="toolbar"><input id="from" type="date"><input id="to" type="date"><button id="loadAtt">Load</button><a id="xlsx">Excel</a><a id="pdf">PDF</a></div><div class="tablewrap"><table><thead><tr><th>ID</th><th>Name</th><th>Department</th><th>Type</th><th>Time</th><th>Distance</th></tr></thead><tbody id="attRows"></tbody></table></div></div>
+<div class="card"><h2>Employees</h2><div class="tablewrap"><table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Department</th><th>Status</th><th>Action</th></tr></thead><tbody id="empRows"></tbody></table></div></div>
+<div class="card"><h2>Leave requests</h2><div class="tablewrap"><table><thead><tr><th>Employee</th><th>Dates</th><th>Type</th><th>Status</th><th>Action</th></tr></thead><tbody id="leaveRows"></tbody></table></div></div>
+</section></main><script src="/admin/app.js"></script></body></html>
